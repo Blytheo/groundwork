@@ -42,7 +42,7 @@ export default function MapPanel({ ctx }) {
     const w = el.clientWidth, h = el.clientHeight;
     if (!w || !h) return;
     const inner = buildSunPathSVG(ctx.lat, w, h, mode);
-    el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;">${inner}</svg>`;
+    el.innerHTML = `<svg viewBox="0 0 ${w} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:100%;pointer-events:none;">${inner}</svg>`;
   }
 
   useEffect(() => {
