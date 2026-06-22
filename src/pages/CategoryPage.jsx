@@ -136,12 +136,11 @@ export default function CategoryPage() {
   return (
     <div className="cat-page">
       <div className="cat-page-head wrap">
+        <span className="cat-page-bg-num" aria-hidden="true">{cat.code}</span>
         <div className="cat-page-meta">
           <span className="cat-page-code">{cat.code}</span>
-          <div>
-            <h2 className="cat-page-title">{cat.label}</h2>
-            <p className="cat-page-sub">{cat.sub}</p>
-          </div>
+          <h2 className="cat-page-title">{cat.label}</h2>
+          <p className="cat-page-sub">{cat.sub}</p>
         </div>
         {cat.nswOnly && (
           <p className="search-note">This data source currently covers NSW addresses only.</p>
