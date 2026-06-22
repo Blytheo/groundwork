@@ -136,7 +136,9 @@ export default function CategoryPage() {
   return (
     <div className="cat-page">
       <div className="cat-page-head wrap">
-        <span className="cat-page-bg-num" aria-hidden="true">{cat.code}</span>
+        <div className="cat-page-bg-wrap" aria-hidden="true">
+          <span className="cat-page-bg-num">{cat.code}</span>
+        </div>
         <div className="cat-page-meta">
           <span className="cat-page-code">{cat.code}</span>
           <h2 className="cat-page-title">{cat.label}</h2>

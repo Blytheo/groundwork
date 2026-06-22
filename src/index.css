@@ -627,11 +627,18 @@ img, svg { display: block; max-width: 100%; }
 .cat-page { min-height: 60vh; }
 .cat-page-head {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   padding-top: 48px;
   padding-bottom: 36px;
   border-bottom: 1px solid var(--line);
   margin-bottom: 32px;
+}
+.cat-page-bg-wrap {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 0;
 }
 .cat-page-bg-num {
   position: absolute;
@@ -648,6 +655,8 @@ img, svg { display: block; max-width: 100%; }
   user-select: none;
 }
 .cat-page-meta {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 10px;
