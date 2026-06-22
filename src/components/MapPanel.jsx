@@ -133,12 +133,13 @@ export default function MapPanel({ ctx }) {
         // Heritage area on this site (LEP) — shown as a warning tint
         const heritageFeats = await safe(arcgisQueryGeom(EP.heritage, ctx.lon, ctx.lat), []);
         if (heritageFeats.length) {
-          map.addSource('heritage', { type: 'geojson', data: esriFeaturesToGeoJSON(heritageFeats) });
+          const heritageGeoJSON = esriFeaturesToGeoJSON(heritageFeats);
+          map.addSource('heritage', { type: 'geojson', data: heritageGeoJSON });
           map.addLayer({
             id: 'heritage-fill',
             type: 'fill',
             source: 'heritage',
-            paint: { 'fill-color': '#6b7a4b', 'fill-opacity': 0.1 },
+            paint: { 'fill-color': '#6b7a4b', 'fill-opacity': 0.15 },
           });
           map.addLayer({
             id: 'heritage-outline',
@@ -147,10 +148,10 @@ export default function MapPanel({ ctx }) {
             paint: { 'line-color': '#6b7a4b', 'line-width': 1.5, 'line-dasharray': [3, 2] },
           });
 
-          map.on('click', 'heritage-fill', e => {
-            if (!e.features?.length) return;
-            const p = e.features[0].properties;
-            const name = p.SHR_NAME || p.ITEM_NAME || p.NAME || p.EPI_NAME || 'Heritage item';
+          // Place a green marker at the centroid of each heritage polygon
+          heritageGeoJSON.features.forEach(f => {
+            const p = f.properties || {};
+            const name = p.SHR_NAME || p.ITEM_NAME || p.NAME || p.EPI_NAME || 'Heritage area';
             const no = p.SHR_NO || p.HERIMAGE_NO || p.ITEM_NO || '';
             const sig = p.SIGNIFICANCE || p.ITEM_SIGNIFICANCE || p.LEP_SIGNIFICANCE || '';
             const lga = p.LGA_NAME || p.LGA || '';
@@ -159,10 +160,26 @@ export default function MapPanel({ ctx }) {
               no && `<div class="mpop-row"><span>Reference</span><b>${no}</b></div>`,
               lga && `<div class="mpop-row"><span>LGA</span><b>${lga}</b></div>`,
             ].filter(Boolean).join('');
-            showPopup(e.lngLat, `<div class="mpop"><strong class="mpop-title">${name}</strong>${rows || '<div class="mpop-row"><span>Heritage item on this site</span></div>'}</div>`);
+            const html = `<div class="mpop"><strong class="mpop-title">${name}</strong>${rows || '<div class="mpop-row"><span>Heritage conservation area</span></div>'}</div>`;
+
+            let center = [ctx.lon, ctx.lat];
+            if (f.geometry?.type === 'Polygon' && f.geometry.coordinates[0]?.length) {
+              const ring = f.geometry.coordinates[0];
+              const avgLon = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+              const avgLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+              center = [avgLon, avgLat];
+            } else if (f.geometry?.type === 'MultiPolygon' && f.geometry.coordinates[0]?.[0]?.length) {
+              const ring = f.geometry.coordinates[0][0];
+              const avgLon = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+              const avgLat = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+              center = [avgLon, avgLat];
+            }
+
+            new mapboxgl.Marker({ color: '#6b7a4b' })
+              .setLngLat(center)
+              .setPopup(new mapboxgl.Popup({ offset: 12, className: 'map-info-popup' }).setHTML(html))
+              .addTo(map);
           });
-          map.on('mouseenter', 'heritage-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
-          map.on('mouseleave', 'heritage-fill', () => { map.getCanvas().style.cursor = ''; });
         }
       }
     });
