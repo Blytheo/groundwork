@@ -1,11 +1,25 @@
+import { useState } from 'react';
 import { downloadSectionPDF } from '../utils/pdf.js';
 
 export default function PDFButton({ ctx, categoryKey }) {
+  const [busy, setBusy] = useState(false);
+
+  async function handleClick() {
+    if (busy) return;
+    setBusy(true);
+    try {
+      await downloadSectionPDF(ctx, categoryKey);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <button
       className="pdf-btn"
       type="button"
-      onClick={() => downloadSectionPDF(ctx, categoryKey)}
+      onClick={handleClick}
+      disabled={busy}
     >
       <svg viewBox="0 0 16 16" fill="none" className="pdf-btn-icon" aria-hidden="true">
         <path
@@ -16,7 +30,7 @@ export default function PDFButton({ ctx, categoryKey }) {
           strokeLinejoin="round"
         />
       </svg>
-      Download PDF
+      {busy ? 'Preparing…' : 'Download PDF'}
     </button>
   );
 }

@@ -3,13 +3,60 @@ import {
   acidSulfateSummary, lotsizeSecondarySummary, streetFrontageSummary, foreshoreSummary,
   heritageSummary, hazardSummary,
 } from './summaries.js';
-import { fmtNum } from './helpers.js';
+import { fmtNum, safe } from './helpers.js';
+import { arcgisQueryGeom } from '../api/arcgis.js';
+import { nearestFeature } from './geojson.js';
+import { EP } from '../data/config.js';
 
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_API_KEY;
 
-function staticMapImg(lon, lat, zoom = 15) {
+// Build a geojson(...) overlay param string from ESRI feature groups
+function esriToOverlayParam(groups) {
+  const features = [];
+  for (const { feats, fill, stroke } of groups) {
+    for (const f of feats) {
+      if (!f.geometry?.rings) continue;
+      features.push({
+        type: 'Feature',
+        geometry: {
+          type: 'Polygon',
+          coordinates: f.geometry.rings.map(ring =>
+            ring.map(([ln, lt]) => [+ln.toFixed(5), +lt.toFixed(5)])
+          ),
+        },
+        properties: { fill, 'fill-opacity': 0.2, stroke, 'stroke-width': 2, 'stroke-opacity': 0.85 },
+      });
+    }
+  }
+  if (!features.length) return '';
+  return 'geojson(' + encodeURIComponent(JSON.stringify({ type: 'FeatureCollection', features })) + ')';
+}
+
+// Fetch lot + heritage polygon geometry for overlay
+async function buildOverlays(ctx) {
+  if (!ctx.isNSW) return {};
+  const pLon = ctx.propertyPoint?.lon ?? ctx.lon;
+  const pLat = ctx.propertyPoint?.lat ?? ctx.lat;
+  const [lotRaw, heritageRaw] = await Promise.all([
+    safe(arcgisQueryGeom(EP.cadastre, pLon, pLat, { distance: 10 }), []),
+    safe(arcgisQueryGeom(EP.heritage, ctx.lon, ctx.lat), []),
+  ]);
+  const lotFeats = nearestFeature(lotRaw, pLon, pLat);
+  return {
+    lot:    esriToOverlayParam([{ feats: lotFeats, fill: '#9b3028', stroke: '#9b3028' }]),
+    heritage: esriToOverlayParam([{ feats: heritageRaw, fill: '#6b7a4b', stroke: '#6b7a4b' }]),
+    both:   esriToOverlayParam([
+      { feats: lotFeats,    fill: '#9b3028', stroke: '#9b3028' },
+      { feats: heritageRaw, fill: '#6b7a4b', stroke: '#6b7a4b' },
+    ]),
+  };
+}
+
+function staticMapImg(lon, lat, zoom = 15, overlayParam = '') {
   if (!MAPBOX_TOKEN) return '';
-  const url = `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-s-circle+9b3028(${lon},${lat})/${lon},${lat},${zoom}/640x300@2x?access_token=${MAPBOX_TOKEN}`;
+  const marker = `pin-s-circle+9b3028(${lon},${lat})`;
+  const parts = [overlayParam, marker].filter(Boolean).join(',');
+  const url = `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/${parts}/${lon},${lat},${zoom}/640x300@2x?access_token=${MAPBOX_TOKEN}`;
   return `<div class="pdf-map"><img src="${url}" alt="Site location map" /></div>`;
 }
 
@@ -32,12 +79,12 @@ function noteBox(html) {
 
 // ─── Content builders ────────────────────────────────────────────────────────
 
-function zoningContent(ctx) {
+function zoningContent(ctx, ov = {}) {
   if (!ctx.nswData) return '<p>NSW data not available for this address.</p>';
   const d = ctx.nswData;
   const c = cadastreSummary(d);
 
-  let html = staticMapImg(ctx.lon, ctx.lat, 16);
+  let html = staticMapImg(ctx.lon, ctx.lat, 16, ov.lot);
 
   let titleHtml = '<div class="kv-grid">';
   if (c) {
@@ -68,13 +115,13 @@ function zoningContent(ctx) {
   return html;
 }
 
-function lotContent(ctx) {
+function lotContent(ctx, ov = {}) {
   if (!ctx.nswData) return '<p>NSW data not available for this address.</p>';
   const d = ctx.nswData;
   const c = cadastreSummary(d);
   if (!c) return '<p>Lot and cadastre data could not be retrieved for this address.</p>';
 
-  let html = staticMapImg(ctx.lon, ctx.lat, 17);
+  let html = staticMapImg(ctx.lon, ctx.lat, 17, ov.lot);
   html += '<div class="kv-grid">';
   if (c.lotId || c.planLabel) html += kv('Lot / DP', esc(c.lotId || c.planLabel));
   if (c.area) html += kv('Lot area', `${esc(String(c.area))} ${esc(c.units)}`);
@@ -83,12 +130,12 @@ function lotContent(ctx) {
   return section('Lot & Cadastre Details', html);
 }
 
-function heritageContent(ctx) {
+function heritageContent(ctx, ov = {}) {
   if (!ctx.nswData) return '<p>NSW data not available for this address.</p>';
   const d = ctx.nswData;
   const h = heritageSummary(d);
 
-  let html = staticMapImg(ctx.lon, ctx.lat, 15);
+  let html = staticMapImg(ctx.lon, ctx.lat, 15, ov.both || ov.heritage);
   html += section('Heritage Status', `<p>${h.html}</p>`);
 
   const named = d.heritageNamedFeats || [];
@@ -114,14 +161,14 @@ function heritageContent(ctx) {
   return html;
 }
 
-function hazardsContent(ctx) {
+function hazardsContent(ctx, ov = {}) {
   if (!ctx.nswData) return '<p>NSW data not available for this address.</p>';
   const d = ctx.nswData;
   const bf = hazardSummary('Bushfire Prone Land', d.bushfire, 'd_Category');
   const fl = hazardSummary('Flood Planning', d.flood, 'LAY_CLASS');
   const ls = hazardSummary('Landslide Risk', d.landslide, 'LAY_CLASS');
 
-  let html = staticMapImg(ctx.lon, ctx.lat, 13);
+  let html = staticMapImg(ctx.lon, ctx.lat, 13, ov.lot);
   html += `<div class="kv-grid">
     ${kv('Bushfire', bf.flagged ? 'Flagged' : 'Clear', bf.flagged ? 'flag' : 'ok')}
     ${kv('Flood', fl.flagged ? 'Flagged' : 'Clear', fl.flagged ? 'flag' : 'ok')}
@@ -133,7 +180,7 @@ function hazardsContent(ctx) {
   return html;
 }
 
-function climateContent(ctx) {
+function climateContent(ctx, ov = {}) {
   const cl = ctx.climate;
   if (!cl || cl.error) return '<p>Live climate data could not be retrieved for this location.</p>';
 
@@ -143,7 +190,7 @@ function climateContent(ctx) {
   const rain = cl.precipitation != null ? fmtNum(cl.precipitation, 1) + ' mm/day' : '—';
   const uv = cl.uvMax != null ? fmtNum(cl.uvMax, 1) : '—';
 
-  let html = staticMapImg(ctx.lon, ctx.lat, 14);
+  let html = staticMapImg(ctx.lon, ctx.lat, 14, ov.lot);
   html += `<p style="color:#837568;font-size:9pt;margin-bottom:12px">5-year historical averages (${esc(String(cl.startYear))}–${esc(String(cl.endYear))}) from Open-Meteo ERA5 reanalysis data.</p>`;
   html += `<div class="kv-grid">
     ${kv('Avg daily sun', sunHours)}
@@ -154,11 +201,11 @@ function climateContent(ctx) {
   return section('Climate Data', html);
 }
 
-function floraContent(ctx) {
+function floraContent(ctx, ov = {}) {
   const ff = ctx.floraFauna;
   if (!ff || ff.error) return '<p>Flora and fauna data could not be retrieved.</p>';
 
-  let html = staticMapImg(ctx.lon, ctx.lat, 13);
+  let html = staticMapImg(ctx.lon, ctx.lat, 13, ov.lot);
   html += noteBox(`Occurrence records within ${esc(String(ff.radiusKm))} km — not a site survey, not suitable for ecological assessment.`);
 
   const renderSpecies = (list, label) => {
@@ -179,11 +226,11 @@ function floraContent(ctx) {
   return html;
 }
 
-function historyContent(ctx) {
+function historyContent(ctx, ov = {}) {
   const { wiki, suburb } = ctx;
   if (!wiki) return `<p>No Wikipedia summary matched to <strong>${esc(suburb || 'this area')}</strong>.</p>`;
 
-  let html = staticMapImg(ctx.lon, ctx.lat, 14);
+  let html = staticMapImg(ctx.lon, ctx.lat, 14, ov.lot);
   html += `<p>${esc(wiki.extract || '')}</p>`;
   if (wiki.title) html += `<p style="margin-top:10px;font-size:8.5pt;color:#837568;font-family:monospace">Source: Wikipedia — ${esc(wiki.title)}</p>`;
   return section('Site History', html);
@@ -282,26 +329,35 @@ const CATS = {
   full:    { num: '—',  label: 'Full site analysis' },
 };
 
-function buildContent(ctx, key) {
+function buildContent(ctx, key, ov = {}) {
   switch (key) {
-    case 'zoning':   return zoningContent(ctx);
-    case 'lot':      return lotContent(ctx);
-    case 'heritage': return heritageContent(ctx);
-    case 'hazards':  return hazardsContent(ctx);
-    case 'climate':  return climateContent(ctx);
-    case 'flora':    return floraContent(ctx);
-    case 'history':  return historyContent(ctx);
-    case 'full':     return [zoningContent, lotContent, heritageContent, hazardsContent, climateContent, floraContent, historyContent].map(fn => fn(ctx)).join('');
+    case 'zoning':   return zoningContent(ctx, ov);
+    case 'lot':      return lotContent(ctx, ov);
+    case 'heritage': return heritageContent(ctx, ov);
+    case 'hazards':  return hazardsContent(ctx, ov);
+    case 'climate':  return climateContent(ctx, ov);
+    case 'flora':    return floraContent(ctx, ov);
+    case 'history':  return historyContent(ctx, ov);
+    case 'full':     return [zoningContent, lotContent, heritageContent, hazardsContent, climateContent, floraContent, historyContent].map(fn => fn(ctx, ov)).join('');
     default:         return '';
   }
 }
 
 // ─── Public API ──────────────────────────────────────────────────────────────
 
-export function downloadSectionPDF(ctx, categoryKey) {
+export async function downloadSectionPDF(ctx, categoryKey) {
+  // Open window immediately — must happen synchronously in the user gesture, before any await
+  const win = window.open('', '_blank');
+  if (!win) {
+    alert('PDF blocked by popup blocker. Please allow popups for this site and try again.');
+    return;
+  }
+  win.document.write('<html><body style="font-family:system-ui,sans-serif;padding:48px;color:#555;font-size:15px">Preparing PDF…</body></html>');
+
   const cat = CATS[categoryKey] || { num: '—', label: categoryKey };
   const date = new Date().toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' });
-  const content = buildContent(ctx, categoryKey);
+  const ov = await buildOverlays(ctx);
+  const content = buildContent(ctx, categoryKey, ov);
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -331,11 +387,7 @@ export function downloadSectionPDF(ctx, categoryKey) {
 </body>
 </html>`;
 
-  const win = window.open('', '_blank');
-  if (!win) {
-    alert('PDF blocked by popup blocker. Please allow popups for this site and try again.');
-    return;
-  }
+  win.document.open();
   win.document.write(html);
   win.document.close();
   setTimeout(() => win.print(), 700);
