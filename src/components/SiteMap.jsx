@@ -54,6 +54,8 @@ export default function SiteMap({ ctx }) {
       .setPopup(new mapboxgl.Popup({ offset: 12 }).setText(ctx.display))
       .addTo(map);
 
+    const layerPopup = new mapboxgl.Popup({ offset: 4, className: 'map-info-popup', closeButton: true });
+
     map.on('load', async () => {
       addHousenumberLabels(map);
       if (!ctx.isNSW) return;
@@ -66,6 +68,24 @@ export default function SiteMap({ ctx }) {
       map.addSource('lot', { type: 'geojson', data: geojson });
       map.addLayer({ id: 'lot-fill',    type: 'fill', source: 'lot', paint: { 'fill-color': '#9b3028', 'fill-opacity': 0.1 } });
       map.addLayer({ id: 'lot-outline', type: 'line', source: 'lot', paint: { 'line-color': '#9b3028', 'line-width': 2.5 } });
+
+      map.on('click', 'lot-fill', e => {
+        if (!e.features?.length) return;
+        const p = e.features[0].properties;
+        const lotId = p.lotidstring || p.LOTIDSTRING || '';
+        const plan = p.planlabel || p.PLANLABEL || p.plannumber || '';
+        const area = p.shape_area || p['Shape.STArea()'] || p.Shape__Area || p.SHAPE_Area || '';
+        const title = lotId || plan || 'Lot boundary';
+        const areaStr = area ? `${Math.round(+area).toLocaleString()} m²` : '';
+        const rows = [
+          plan && lotId && `<div class="mpop-row"><span>Plan</span><b>${plan}</b></div>`,
+          areaStr && `<div class="mpop-row"><span>Area</span><b>${areaStr}</b></div>`,
+        ].filter(Boolean).join('');
+        layerPopup.setLngLat(e.lngLat).setHTML(`<div class="mpop"><strong class="mpop-title">${title}</strong>${rows}</div>`).addTo(map);
+      });
+      map.on('mouseenter', 'lot-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+      map.on('mouseleave', 'lot-fill', () => { map.getCanvas().style.cursor = ''; });
+
       const bounds = new mapboxgl.LngLatBounds();
       geojson.features.forEach(f => {
         if (f.geometry.type === 'Polygon') f.geometry.coordinates[0].forEach(c => bounds.extend(c));

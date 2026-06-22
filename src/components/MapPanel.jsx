@@ -66,6 +66,12 @@ export default function MapPanel({ ctx }) {
       .setPopup(new mapboxgl.Popup({ offset: 12 }).setText(ctx.typedAddress))
       .addTo(map);
 
+    const layerPopup = new mapboxgl.Popup({ offset: 4, className: 'map-info-popup', closeButton: true });
+
+    function showPopup(lngLat, html) {
+      layerPopup.setLngLat(lngLat).setHTML(html).addTo(map);
+    }
+
     map.on('load', async () => {
       // Draw sun path overlay once map is ready
       drawOverlay(dateMode);
@@ -95,6 +101,23 @@ export default function MapPanel({ ctx }) {
             paint: { 'line-color': '#9b3028', 'line-width': 2.5, 'line-opacity': 0.85 },
           });
 
+          map.on('click', 'lot-fill', e => {
+            if (!e.features?.length) return;
+            const p = e.features[0].properties;
+            const lotId = p.lotidstring || p.LOTIDSTRING || '';
+            const plan = p.planlabel || p.PLANLABEL || p.plannumber || '';
+            const area = p.shape_area || p['Shape.STArea()'] || p.Shape__Area || p.SHAPE_Area || '';
+            const title = lotId || plan || 'Lot boundary';
+            const areaStr = area ? `${Math.round(+area).toLocaleString()} m²` : '';
+            const rows = [
+              plan && lotId && `<div class="mpop-row"><span>Plan</span><b>${plan}</b></div>`,
+              areaStr && `<div class="mpop-row"><span>Area</span><b>${areaStr}</b></div>`,
+            ].filter(Boolean).join('');
+            showPopup(e.lngLat, `<div class="mpop"><strong class="mpop-title">${title}</strong>${rows}</div>`);
+          });
+          map.on('mouseenter', 'lot-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+          map.on('mouseleave', 'lot-fill', () => { map.getCanvas().style.cursor = ''; });
+
           // Fit map to lot bounds with padding
           const bounds = new mapboxgl.LngLatBounds();
           geojson.features.forEach(f => {
@@ -123,6 +146,23 @@ export default function MapPanel({ ctx }) {
             source: 'heritage',
             paint: { 'line-color': '#6b7a4b', 'line-width': 1.5, 'line-dasharray': [3, 2] },
           });
+
+          map.on('click', 'heritage-fill', e => {
+            if (!e.features?.length) return;
+            const p = e.features[0].properties;
+            const name = p.SHR_NAME || p.ITEM_NAME || p.NAME || p.EPI_NAME || 'Heritage item';
+            const no = p.SHR_NO || p.HERIMAGE_NO || p.ITEM_NO || '';
+            const sig = p.SIGNIFICANCE || p.ITEM_SIGNIFICANCE || p.LEP_SIGNIFICANCE || '';
+            const lga = p.LGA_NAME || p.LGA || '';
+            const rows = [
+              sig && `<div class="mpop-row"><span>Significance</span><b>${sig}</b></div>`,
+              no && `<div class="mpop-row"><span>Reference</span><b>${no}</b></div>`,
+              lga && `<div class="mpop-row"><span>LGA</span><b>${lga}</b></div>`,
+            ].filter(Boolean).join('');
+            showPopup(e.lngLat, `<div class="mpop"><strong class="mpop-title">${name}</strong>${rows || '<div class="mpop-row"><span>Heritage item on this site</span></div>'}</div>`);
+          });
+          map.on('mouseenter', 'heritage-fill', () => { map.getCanvas().style.cursor = 'pointer'; });
+          map.on('mouseleave', 'heritage-fill', () => { map.getCanvas().style.cursor = ''; });
         }
       }
     });
