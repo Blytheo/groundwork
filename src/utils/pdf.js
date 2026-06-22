@@ -261,6 +261,7 @@ const CATS = {
   climate: { num: '05', label: 'Climate & sun' },
   flora:   { num: '06', label: 'Flora & fauna' },
   history: { num: '07', label: 'Site history' },
+  full:    { num: '—',  label: 'Full site analysis' },
 };
 
 function buildContent(ctx, key) {
@@ -272,6 +273,7 @@ function buildContent(ctx, key) {
     case 'climate':  return climateContent(ctx);
     case 'flora':    return floraContent(ctx);
     case 'history':  return historyContent(ctx);
+    case 'full':     return [zoningContent, lotContent, heritageContent, hazardsContent, climateContent, floraContent, historyContent].map(fn => fn(ctx)).join('');
     default:         return '';
   }
 }

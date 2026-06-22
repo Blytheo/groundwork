@@ -6,6 +6,7 @@ import MapPanel from '../components/MapPanel.jsx';
 import LinksPanel from '../components/LinksPanel.jsx';
 import LandmarksMap from '../components/LandmarksMap.jsx';
 import Accordions from '../components/Accordions.jsx';
+import PDFButton from '../components/PDFButton.jsx';
 
 export default function FullAnalysisPage() {
   const { ctx, loading, error, search } = useSiteSearch();
@@ -35,6 +36,9 @@ export default function FullAnalysisPage() {
           </div>
           <LandmarksMap ctx={ctx} />
           <Accordions ctx={ctx} />
+          <div className="pdf-btn-row">
+            <PDFButton ctx={ctx} categoryKey="full" />
+          </div>
         </div>
       )}
     </>
