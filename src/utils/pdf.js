@@ -5,6 +5,14 @@ import {
 } from './summaries.js';
 import { fmtNum } from './helpers.js';
 
+const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_API_KEY;
+
+function staticMapImg(lon, lat, zoom = 15) {
+  if (!MAPBOX_TOKEN) return '';
+  const url = `https://api.mapbox.com/styles/v1/mapbox/light-v11/static/pin-s-circle+9b3028(${lon},${lat})/${lon},${lat},${zoom}/640x300@2x?access_token=${MAPBOX_TOKEN}`;
+  return `<div class="pdf-map"><img src="${url}" alt="Site location map" /></div>`;
+}
+
 function esc(str) {
   return String(str ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -29,7 +37,7 @@ function zoningContent(ctx) {
   const d = ctx.nswData;
   const c = cadastreSummary(d);
 
-  let html = '';
+  let html = staticMapImg(ctx.lon, ctx.lat, 16);
 
   let titleHtml = '<div class="kv-grid">';
   if (c) {
@@ -66,7 +74,8 @@ function lotContent(ctx) {
   const c = cadastreSummary(d);
   if (!c) return '<p>Lot and cadastre data could not be retrieved for this address.</p>';
 
-  let html = '<div class="kv-grid">';
+  let html = staticMapImg(ctx.lon, ctx.lat, 17);
+  html += '<div class="kv-grid">';
   if (c.lotId || c.planLabel) html += kv('Lot / DP', esc(c.lotId || c.planLabel));
   if (c.area) html += kv('Lot area', `${esc(String(c.area))} ${esc(c.units)}`);
   html += '</div>';
@@ -79,7 +88,8 @@ function heritageContent(ctx) {
   const d = ctx.nswData;
   const h = heritageSummary(d);
 
-  let html = section('Heritage Status', `<p>${h.html}</p>`);
+  let html = staticMapImg(ctx.lon, ctx.lat, 15);
+  html += section('Heritage Status', `<p>${h.html}</p>`);
 
   const named = d.heritageNamedFeats || [];
   let shrHtml = '';
@@ -111,7 +121,8 @@ function hazardsContent(ctx) {
   const fl = hazardSummary('Flood Planning', d.flood, 'LAY_CLASS');
   const ls = hazardSummary('Landslide Risk', d.landslide, 'LAY_CLASS');
 
-  let html = `<div class="kv-grid">
+  let html = staticMapImg(ctx.lon, ctx.lat, 13);
+  html += `<div class="kv-grid">
     ${kv('Bushfire', bf.flagged ? 'Flagged' : 'Clear', bf.flagged ? 'flag' : 'ok')}
     ${kv('Flood', fl.flagged ? 'Flagged' : 'Clear', fl.flagged ? 'flag' : 'ok')}
     ${kv('Landslide', ls.flagged ? 'Flagged' : 'Clear', ls.flagged ? 'flag' : 'ok')}
@@ -132,7 +143,8 @@ function climateContent(ctx) {
   const rain = cl.precipitation != null ? fmtNum(cl.precipitation, 1) + ' mm/day' : '—';
   const uv = cl.uvMax != null ? fmtNum(cl.uvMax, 1) : '—';
 
-  let html = `<p style="color:#837568;font-size:9pt;margin-bottom:12px">5-year historical averages (${esc(String(cl.startYear))}–${esc(String(cl.endYear))}) from Open-Meteo ERA5 reanalysis data.</p>`;
+  let html = staticMapImg(ctx.lon, ctx.lat, 14);
+  html += `<p style="color:#837568;font-size:9pt;margin-bottom:12px">5-year historical averages (${esc(String(cl.startYear))}–${esc(String(cl.endYear))}) from Open-Meteo ERA5 reanalysis data.</p>`;
   html += `<div class="kv-grid">
     ${kv('Avg daily sun', sunHours)}
     ${kv('Prevailing wind', windDir && wind ? `${esc(windDir)} · ${wind}` : wind)}
@@ -146,7 +158,8 @@ function floraContent(ctx) {
   const ff = ctx.floraFauna;
   if (!ff || ff.error) return '<p>Flora and fauna data could not be retrieved.</p>';
 
-  let html = noteBox(`Occurrence records within ${esc(String(ff.radiusKm))} km — not a site survey, not suitable for ecological assessment.`);
+  let html = staticMapImg(ctx.lon, ctx.lat, 13);
+  html += noteBox(`Occurrence records within ${esc(String(ff.radiusKm))} km — not a site survey, not suitable for ecological assessment.`);
 
   const renderSpecies = (list, label) => {
     if (!list.length) return `<p style="color:#837568;font-size:9pt">No ${label} occurrence records found.</p>`;
@@ -170,7 +183,8 @@ function historyContent(ctx) {
   const { wiki, suburb } = ctx;
   if (!wiki) return `<p>No Wikipedia summary matched to <strong>${esc(suburb || 'this area')}</strong>.</p>`;
 
-  let html = `<p>${esc(wiki.extract || '')}</p>`;
+  let html = staticMapImg(ctx.lon, ctx.lat, 14);
+  html += `<p>${esc(wiki.extract || '')}</p>`;
   if (wiki.title) html += `<p style="margin-top:10px;font-size:8.5pt;color:#837568;font-family:monospace">Source: Wikipedia — ${esc(wiki.title)}</p>`;
   return section('Site History', html);
 }
@@ -239,6 +253,10 @@ function pdfStyles() {
     .species-item { padding: 8px 10px; border: 1px solid #d4cec5; border-radius: 4px; }
     .sci { font-style: italic; font-size: 9pt; }
     .common { font-size: 8pt; color: #67524a; margin-top: 2px; }
+
+    /* Map */
+    .pdf-map { margin: 0 0 20px; border-radius: 7px; overflow: hidden; border: 1px solid #d4cec5; background: #eee; line-height: 0; }
+    .pdf-map img { width: 100%; height: auto; display: block; }
 
     /* Footer */
     .pdf-footer { margin-top: 48px; padding-top: 14px; border-top: 1.5px solid #bfb8ae; font-family: 'IBM Plex Mono', monospace; font-size: 7pt; color: #837568; line-height: 1.6; }
