@@ -11,25 +11,30 @@ import { EP } from '../data/config.js';
 const MAPBOX_TOKEN = import.meta.env.VITE_MAPBOX_API_KEY;
 
 // Build a geojson(...) overlay param string from ESRI feature groups
-function esriToOverlayParam(groups) {
+// Each group can specify { feats, fill, stroke, maxPts=40, precision=5 }
+function esriToOverlayParam(groups, urlCap = 4000) {
   const features = [];
-  for (const { feats, fill, stroke } of groups) {
-    for (const f of feats) {
+  for (const { feats, fill, stroke, maxPts = 40, precision = 5 } of groups) {
+    for (const f of feats.slice(0, 5)) {
       if (!f.geometry?.rings) continue;
       features.push({
         type: 'Feature',
         geometry: {
           type: 'Polygon',
-          coordinates: f.geometry.rings.map(ring =>
-            ring.map(([ln, lt]) => [+ln.toFixed(5), +lt.toFixed(5)])
-          ),
+          coordinates: f.geometry.rings.map(ring => {
+            const step = Math.max(1, Math.ceil(ring.length / maxPts));
+            return ring
+              .filter((_, i) => i % step === 0 || i === ring.length - 1)
+              .map(([ln, lt]) => [+ln.toFixed(precision), +lt.toFixed(precision)]);
+          }),
         },
-        properties: { fill, 'fill-opacity': 0.2, stroke, 'stroke-width': 2, 'stroke-opacity': 0.85 },
+        properties: { fill, 'fill-opacity': 0.35, stroke, 'stroke-width': 2.5, 'stroke-opacity': 1 },
       });
     }
   }
   if (!features.length) return '';
-  return 'geojson(' + encodeURIComponent(JSON.stringify({ type: 'FeatureCollection', features })) + ')';
+  const param = 'geojson(' + encodeURIComponent(JSON.stringify({ type: 'FeatureCollection', features })) + ')';
+  return param.length > urlCap ? '' : param;
 }
 
 // Fetch lot + heritage polygon geometry for overlay
@@ -39,16 +44,17 @@ async function buildOverlays(ctx) {
   const pLat = ctx.propertyPoint?.lat ?? ctx.lat;
   const [lotRaw, heritageRaw] = await Promise.all([
     safe(arcgisQueryGeom(EP.cadastre, pLon, pLat, { distance: 10 }), []),
-    safe(arcgisQueryGeom(EP.heritage, ctx.lon, ctx.lat), []),
+    safe(arcgisQueryGeom(EP.heritage, ctx.lon, ctx.lat, { distance: 500 }), []),
   ]);
   const lotFeats = nearestFeature(lotRaw, pLon, pLat);
+  // Lot: high precision (5dp, 60 verts) — small polygon, shape matters
+  const LOT  = { feats: lotFeats,    fill: '#9b3028', stroke: '#9b3028', maxPts: 60, precision: 5 };
+  // Heritage zones: lower precision (4dp, 12 verts) — large areas, tight simplification to save URL space
+  const HER  = { feats: heritageRaw, fill: '#6b7a4b', stroke: '#6b7a4b', maxPts: 12, precision: 4 };
   return {
-    lot:    esriToOverlayParam([{ feats: lotFeats, fill: '#9b3028', stroke: '#9b3028' }]),
-    heritage: esriToOverlayParam([{ feats: heritageRaw, fill: '#6b7a4b', stroke: '#6b7a4b' }]),
-    both:   esriToOverlayParam([
-      { feats: lotFeats,    fill: '#9b3028', stroke: '#9b3028' },
-      { feats: heritageRaw, fill: '#6b7a4b', stroke: '#6b7a4b' },
-    ]),
+    lot:      esriToOverlayParam([LOT]),
+    heritage: esriToOverlayParam([HER], 4000),
+    both:     esriToOverlayParam([LOT, HER], 4000),
   };
 }
 

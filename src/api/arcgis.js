@@ -1,3 +1,10 @@
+function arcgisFetch(url, params, timeout = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeout);
+  return fetch(`${url}/query?${params.toString()}`, { signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+}
+
 export async function arcgisQuery(url, lon, lat, opts = {}) {
   const params = new URLSearchParams({
     geometry: `${lon},${lat}`,
@@ -9,7 +16,7 @@ export async function arcgisQuery(url, lon, lat, opts = {}) {
     f: 'json',
   });
   if (opts.distance) { params.set('distance', opts.distance); params.set('units', 'esriSRUnit_Meter'); }
-  const res = await fetch(`${url}/query?${params.toString()}`);
+  const res = await arcgisFetch(url, params);
   if (!res.ok) throw new Error('ArcGIS HTTP ' + res.status);
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || 'ArcGIS error');
@@ -28,7 +35,7 @@ export async function arcgisQueryGeom(url, lon, lat, opts = {}) {
     f: 'json',
   });
   if (opts.distance) { params.set('distance', opts.distance); params.set('units', 'esriSRUnit_Meter'); }
-  const res = await fetch(`${url}/query?${params.toString()}`);
+  const res = await arcgisFetch(url, params);
   if (!res.ok) throw new Error('ArcGIS HTTP ' + res.status);
   const data = await res.json();
   if (data.error) throw new Error(data.error.message || 'ArcGIS error');
